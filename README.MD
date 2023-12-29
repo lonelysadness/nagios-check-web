@@ -56,8 +56,8 @@ Run the script with the following syntax:
 
 ```Bash
 define command {
-    command_name check_website_availability
-    command_line $USER1$/check_website_availability.sh -p $ARG1$ -s $ARG2$ -t $ARG3$ $ARG4$
+    command_name check_web
+    command_line $USER1$/check_web.sh -p $ARG1$ -s $ARG2$ -t $ARG3$ $ARG4$
 }
 ```
 
@@ -68,7 +68,7 @@ define service {
     use generic-service
     host_name example-host
     service_description Check Website
-    check_command check_website_availability!8080!8443!10!www.example.com
+    check_command check_web!8080!8443!10!www.example.com
 }
 ```
 
