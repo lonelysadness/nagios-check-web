@@ -1,86 +1,82 @@
 #!/bin/bash
 
-# Check the availability of a website on specified ports (default HTTP: 80, HTTPS: 443)
+# Nagios probe script to check the availability of a website on specified ports
 
-# Default ports
 DEFAULT_HTTP_PORT=80
 DEFAULT_HTTPS_PORT=443
 
-# Help message
 display_help() {
-    echo "Usage: $0 [options] <URL>"
+    echo "Usage: $0 [options] <URL or IP>"
     echo "Options:"
     echo "  -h, --help        Show this help message"
     echo "  -p, --http-port   Specify HTTP port (default: $DEFAULT_HTTP_PORT)"
     echo "  -s, --https-port  Specify HTTPS port (default: $DEFAULT_HTTPS_PORT)"
+    echo "  -t, --timeout     Specify timeout in seconds (default: 10)"
     echo "Example:"
-    echo "  $0 --http-port 8080 --https-port 8443 www.example.com"
+    echo "  $0 -p 8080 -s 8443 -t 5 www.example.com"
+    echo "  $0 -p 8080 -s 8443 -t 5 192.168.1.1"
 }
 
-# Function to check availability on a specific port
 check_port() {
     local url=$1
     local port=$2
     local protocol=$3
-
-    if timeout 10 bash -c "echo > /dev/tcp/$url/$port" 2>/dev/null; then
-        echo "OK - $protocol connection successful on $url:$port"
-        return 0
+    local start_time=$(date +%s.%N)
+    if timeout $timeout_duration bash -c "echo > /dev/tcp/$url/$port" 2>/dev/null; then
+        local status="OK"
+        local result_code=0
     else
-        echo "CRITICAL - $protocol connection failed on $url:$port"
-        return 2
+        local status="CRITICAL"
+        local result_code=2
     fi
+    local end_time=$(date +%s.%N)
+    local elapsed=$(echo "$end_time - $start_time" | bc)
+    printf "%s - %s connection on %s:%s | 'time_%s'=%.6fs\n" "$status" "$protocol" "$url" "$port" "$protocol" "$elapsed"
+    return $result_code
 }
 
-# Parse arguments
+parse_arguments() {
+    local OPTIND
+    while getopts ":hp:s:t:" opt; do
+        case ${opt} in
+            h ) display_help; exit 0 ;;
+            p ) http_port=$OPTARG ;;
+            s ) https_port=$OPTARG ;;
+            t ) timeout_duration=$OPTARG ;;
+            \? ) echo "Invalid Option: -$OPTARG" >&2; exit 1 ;;
+        esac
+    done
+    shift $((OPTIND -1))
+    URL=$1
+}
+
 http_port=$DEFAULT_HTTP_PORT
 https_port=$DEFAULT_HTTPS_PORT
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -h|--help)
-            display_help
-            exit 0
-            ;;
-        -p|--http-port)
-            http_port=$2
-            shift 2
-            ;;
-        -s|--https-port)
-            https_port=$2
-            shift 2
-            ;;
-        *)
-            URL=$1
-            shift
-            ;;
-    esac
-done
+timeout_duration=10
+parse_arguments "$@"
 
-# Checking if URL is provided
 if [[ -z "${URL:-}" ]]; then
-    echo "Error: URL not provided."
+    echo "Error: URL or IP not provided." >&2
     display_help
     exit 3
 fi
 
-# Check HTTP
 http_result=$(check_port $URL $http_port "HTTP")
 status_http=$?
 
-# Check HTTPS
 https_result=$(check_port $URL $https_port "HTTPS")
 status_https=$?
 
-# Determine overall status and output
-if [ $status_http -eq 0 ] && [ $status_https -eq 0 ]; then
-    echo "OK - Both HTTP and HTTPS connections are successful."
-    exit 0
-else
-    # Display CRITICAL results first, followed by OK results
-    [[ $status_https -eq 2 ]] && echo "$https_result"
-    [[ $status_http -eq 2 ]] && echo "$http_result"
-    [[ $status_https -eq 0 ]] && echo "$https_result"
-    [[ $status_http -eq 0 ]] && echo "$http_result"
+# Display the results
+[[ $status_http -eq 2 ]] && echo "$http_result"
+[[ $status_https -eq 2 ]] && echo "$https_result"
+[[ $status_http -eq 0 ]] && echo "$http_result"
+[[ $status_https -eq 0 ]] && echo "$https_result"
+
+# Exit with the appropriate code
+if [ $status_http -ne 0 ] || [ $status_https -ne 0 ]; then
     exit 2
 fi
+
+exit 0
 
