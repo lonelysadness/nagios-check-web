@@ -64,19 +64,23 @@ if [[ -z "${URL:-}" ]]; then
 fi
 
 # Check HTTP
-check_port $URL $http_port "HTTP"
+http_result=$(check_port $URL $http_port "HTTP")
 status_http=$?
 
 # Check HTTPS
-check_port $URL $https_port "HTTPS"
+https_result=$(check_port $URL $https_port "HTTPS")
 status_https=$?
 
-# Determine overall status
+# Determine overall status and output
 if [ $status_http -eq 0 ] && [ $status_https -eq 0 ]; then
+    echo "OK - Both HTTP and HTTPS connections are successful."
     exit 0
-elif [ $status_http -eq 2 ] || [ $status_https -eq 2 ]; then
-    exit 2
 else
-    exit 3
+    # Display CRITICAL results first, followed by OK results
+    [[ $status_https -eq 2 ]] && echo "$https_result"
+    [[ $status_http -eq 2 ]] && echo "$http_result"
+    [[ $status_https -eq 0 ]] && echo "$https_result"
+    [[ $status_http -eq 0 ]] && echo "$http_result"
+    exit 2
 fi
 
